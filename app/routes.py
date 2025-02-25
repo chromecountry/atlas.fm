@@ -1,8 +1,7 @@
 from flask import (
     Blueprint, redirect, request, session, render_template, send_file
 )
-from spotipy.oauth2 import SpotifyOAuth
-from credentials import Spotipy as SpotipyCredentials
+from app.controllers.auth_controller import AuthController
 from app.controllers.library_controller import LibraryController
 from app.controllers.map_controller import MapController
 from flask import current_app as app
@@ -13,43 +12,32 @@ PROJECT_ROOT = Path(__file__).absolute().parents[1]
 import sys; sys.path.append(str(PROJECT_ROOT))  # noqa
 
 main = Blueprint('main', __name__)
+auth_controller = AuthController()
 
 
 @main.route('/')
 def index():
-    if not session.get('token_info'):
+    if not auth_controller.check_auth():
         return render_template('login.html')
     return redirect('/map')
 
 
 @main.route('/login')
 def login():
-    sp_oauth = SpotifyOAuth(
-        client_id=SpotipyCredentials.SPOTIPY_CLIENT_ID,
-        client_secret=SpotipyCredentials.SPOTIPY_CLIENT_SECRET,
-        redirect_uri='http://localhost:5000/callback',
-        scope=SpotipyCredentials.SCOPE,
-        cache_handler=None
-    )
-    auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)
+    return auth_controller.handle_login()
 
 
 @main.route('/callback')
 def callback():
-    if 'error' in request.args:
-        return f"Error: {request.args['error']}"
-    if 'code' not in request.args:
-        return 'No code provided'
-
-    sp_oauth = SpotifyOAuth(
-        client_id=SpotipyCredentials.SPOTIPY_CLIENT_ID,
-        client_secret=SpotipyCredentials.SPOTIPY_CLIENT_SECRET,
-        redirect_uri='http://localhost:5000/callback',
-        scope=SpotipyCredentials.SCOPE
+    return auth_controller.handle_callback(
+        code=request.args.get('code'),
+        error=request.args.get('error')
     )
-    session['token_info'] = sp_oauth.get_access_token(request.args['code'])
-    return redirect('/map')
+
+
+@main.route('/logout')
+def logout():
+    return auth_controller.handle_logout()
 
 
 @main.route('/map')
@@ -84,9 +72,3 @@ def generate_map():
     except Exception as e:
         print(f"Error generating map: {e}")
         return redirect('/')
-
-
-@main.route('/logout')
-def logout():
-    session.clear()
-    return redirect('/')
